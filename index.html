@@ -107,18 +107,6 @@
         text-decoration: underline;
       }
 
-      .deployed-app-link {
-        color: #264968;
-        font-size: 12px;
-        font-weight: 700;
-        text-decoration: none;
-        padding: 0 7px;
-      }
-
-      .deployed-app-link:hover {
-        text-decoration: underline;
-      }
-
       .finish-button {
         color: #fff;
         background: linear-gradient(135deg, #8a6428, #b38b45);
@@ -883,7 +871,6 @@
       <button class="finish-button" type="button" onclick="openFinishDialog()">Finish</button>
       <button class="clear-button" type="button" onclick="startNewForm()">New form</button>
       <button class="clear-button" type="button" onclick="resetForm()">Clear entries</button>
-      <a class="deployed-app-link" href="https://script.google.com/macros/s/AKfycbzKbQkqYo6iYBlMzCtV3miBZyLHzOHh0rslHzSzh_3hkmWInz4ejwUYD5J4p3wsLTzDow/exec" target="_blank" rel="noopener">Open deployed app</a>
       <span class="save-status" id="save-status" role="status" aria-live="polite">Not saved</span>
     </div>
 
@@ -1119,7 +1106,6 @@
     const witnessList = document.getElementById('witness-list');
     const witnessEntryTemplate = witnessList.querySelector('[data-witness-entry]').cloneNode(true);
     const saveStatus = document.getElementById('save-status');
-    const APPS_SCRIPT_WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbzKbQkqYo6iYBlMzCtV3miBZyLHzOHh0rslHzSzh_3hkmWInz4ejwUYD5J4p3wsLTzDow/exec';
     const QUESTIONS_PER_PAGE = 12;
     let participantDetails = null;
     let startedAt = '';
@@ -1230,19 +1216,16 @@
       saveStatus.dataset.state = state || '';
     }
 
-    function saveInvestigationToSheet() {
+    function saveInvestigationToSheet(options = {}) {
       if (isSaving) {
-        return;
+        return false;
       }
       if (typeof google === 'undefined' || !google.script || !google.script.run) {
-        setSaveStatus('This file cannot save directly. Open the deployed app, then enter or edit the form there.', 'error');
-        const appLink = document.createElement('a');
-        appLink.href = APPS_SCRIPT_WEB_APP_URL;
-        appLink.target = '_blank';
-        appLink.rel = 'noopener';
-        appLink.textContent = ' Open deployed app';
-        saveStatus.appendChild(appLink);
-        return;
+        setSaveStatus('Save failed: open this form from its Google Apps Script deployment.', 'error');
+        if (typeof options.onFailure === 'function') {
+          options.onFailure(new Error('The Apps Script save service is unavailable.'));
+        }
+        return false;
       }
 
       isSaving = true;
@@ -1264,6 +1247,9 @@
             sheetLink.textContent = 'Open sheet';
             saveStatus.appendChild(sheetLink);
           }
+          if (typeof options.onSuccess === 'function') {
+            options.onSuccess(result);
+          }
           isSaving = false;
           document.querySelectorAll('.save-button').forEach(button => {
             button.disabled = false;
@@ -1273,6 +1259,9 @@
         .withFailureHandler(error => {
           const message = error && error.message ? error.message : 'Unknown server error.';
           setSaveStatus('Save failed: ' + message, 'error');
+          if (typeof options.onFailure === 'function') {
+            options.onFailure(error);
+          }
           isSaving = false;
           document.querySelectorAll('.save-button').forEach(button => {
             button.disabled = false;
@@ -1280,6 +1269,7 @@
           });
         })
         .saveInvestigation(collectInvestigationPayload());
+      return true;
     }
 
     function openFinishDialog() {
@@ -1686,7 +1676,9 @@
         finishedAt = finishForm.elements.namedItem('finishTime').value;
         updateRecordedTime();
         setSaveStatus(currentInvestigationId ? 'Unsaved changes' : 'Not saved', '');
-        closeFinishDialog();
+        saveInvestigationToSheet({
+          onSuccess: closeFinishDialog
+        });
       });
 
       document.getElementById('add-witness-button').addEventListener('click', addWitness);
